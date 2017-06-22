@@ -1,0 +1,1 @@
+rsync --exclude='public/uploads' --exclude='public/storage' --exclude='node_modules/' --exclude='bower_components/' -ap --copy-links --hard-links --perms --usermap=*:1000 --groupmap=*:50 '/Users/mark/Documents/apps/g0rdv2/g0rdv2/' rsync://192.168.99.100:10872/volume

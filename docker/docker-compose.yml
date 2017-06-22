@@ -1,0 +1,75 @@
+version: '2'
+networks:
+  g0rdv2:
+    driver: bridge
+    ipam:
+      config:
+      - subnet: 172.19.0.0/16
+services:
+    mysql:
+        build: ./mysql
+        restart: always
+        environment:
+            MYSQL_ROOT_PASSWORD: app
+            MYSQL_DATABASE: app
+            MYSQL_USER: app
+            MYSQL_PASSWORD: app
+        env_file: ./../.env
+        volumes:
+            - ./.data/db:/var/lib/mysql
+            - ./logs/mysql:/var/log/mysql
+        networks:
+            g0rdv2:
+                ipv4_address: 172.19.0.3
+    php:
+        build: ./php-fpm
+        env_file: ./../.env
+        volumes:
+            - ./app:/var/www/app
+            - ./logs/app:/var/www/app/var/logs
+            - ./logs/xdebug:/var/log/xdebug
+            - ./logs/laravel:/var/www/app/storage/logs
+        links:
+            - mysql
+            - redis
+        tmpfs:
+            - /var/run
+        networks:
+            g0rdv2:
+                ipv4_address: 172.19.0.2
+    openresty:
+        build: ./openresty
+        ports:
+            - "80:80"
+        links:
+            - php
+            - redis
+        volumes:
+            - ./app:/var/www/app
+            - ./logs/openresty/:/var/log/openresty
+        networks:
+            g0rdv2:
+                ipv4_address: 172.19.0.100
+                aliases: 
+                    - g0rdv2.dev
+                    - g0rdv2.io
+
+    elk:
+        image: willdurand/elk:latest
+        ports:
+            - "8083:80"
+        volumes:
+            - ./elk/logstash:/etc/logstash
+            - ./elk/logstash/patterns:/opt/logstash/patterns
+            - ./logs:/var/log
+        volumes_from:
+            - php
+            - openresty
+        networks:
+            g0rdv2:
+                ipv4_address: 172.19.0.4
+    redis:
+        image: redis:alpine
+        networks:
+            g0rdv2:
+                ipv4_address: 172.19.0.5

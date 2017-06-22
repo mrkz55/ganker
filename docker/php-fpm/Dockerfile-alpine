@@ -1,0 +1,111 @@
+FROM php:7.1-rc-fpm-alpine
+
+# Fix ipv6 repository stuff
+RUN echo "ipv6" >> /etc/modules
+RUN apk update
+
+# Fix permissions issues for OSX
+RUN deluser www-data
+RUN addgroup -g 50 www-data
+RUN adduser -u 1000 -G www-data -g 'Linux User named' -s /sbin/nologin -D www-data
+
+# only fix perms on osx
+#RUN echo $OSTYPE | grep darwin | if [[ $? -eq 0 ]] ; then deluser www-data && addgroup -g 50 www-data && adduser -u 1000 -G www-data -g 'Linux User named' -s /sbin/nologin -D www-data; fi
+
+# Install dev stuff
+RUN apk add autoconf gcc make g++ zlib-dev file g++ libc-dev pkgconf libmemcached-dev freetype-dev libjpeg-turbo-dev libpng-dev musl-dev
+
+# Install php extensions
+RUN docker-php-ext-install pdo_mysql
+#RUN docker-php-ext-install gd 
+#RUN docker-php-ext-install pdo_sqlite
+#RUN docker-php-ext-install opcache
+#RUN docker-php-ext-install json
+#RUN docker-php-ext-install calendar
+#RUN docker-php-ext-install xml
+#RUN docker-php-ext-install zip
+#RUN docker-php-ext-install bz2
+#RUN docker-php-ext-install mbstring
+#RUN docker-php-ext-install mcrypt
+#RUN docker-php-ext-install curl
+
+#RUN docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/
+#RUN docker-php-ext-install gd
+
+
+
+RUN docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/
+RUN docker-php-ext-install -j4 gd
+
+# Install PECL extensions
+RUN pecl install xdebug
+RUN docker-php-ext-enable xdebug
+
+RUN pecl install phar
+RUN docker-php-ext-install phar
+
+RUN pecl install intl
+RUN docker-php-ext-install intl
+
+# Configure XDEBUG
+RUN echo "xdebug.idekey=PHPSTORM" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+RUN echo "xdebug.remote_autostart=0" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+RUN echo "xdebug.remote_enable=1" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+RUN echo "xdebug.remote_handler=dbgp" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+RUN echo "xdebug.remote_host=10.0.2.2" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+RUN echo "xdebug.remote_port=9001" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+RUN echo "xdebug.remote_log='/var/log/xdebug/xdebug.log'" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+
+# Set php-fpm timeout 6 minutes for xdebug
+RUN echo "request_terminate_timeout = 180" >> /usr/local/etc/php-fpm.d/www.conf
+
+ADD php.ini /usr/local/etc/php
+ADD php-fpm.conf /usr/local/etc/
+#ADD laravel.conf /usr/local/etc/php-fpm.d/
+
+ENV FFMPEG_VERSION=3.0.2
+
+# Install FFMEG
+WORKDIR /tmp/ffmpeg
+
+RUN apk add --update build-base curl nasm tar bzip2 \
+zlib-dev openssl-dev yasm-dev lame-dev libogg-dev x264-dev libvpx-dev libvorbis-dev x265-dev freetype-dev libass-dev libwebp-dev rtmpdump-dev libtheora-dev opus-dev && \
+
+DIR=$(mktemp -d) && cd ${DIR} && \
+
+#curl -s http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz | tar zxvf - -C . && \
+#cd ffmpeg-${FFMPEG_VERSION} && \
+#./configure \
+#--enable-version3 --enable-gpl --enable-nonfree --enable-small --enable-libmp3lame #--enable-libx264 --enable-libx265 --enable-libvpx --enable-libtheora --enable-libvorbis #--enable-libopus --enable-libass --enable-libwebp --enable-librtmp --enable-postproc #--enable-avresample --enable-libfreetype --enable-openssl --disable-debug && \
+#make && \
+#make install && \
+#make distclean && \
+
+rm -rf ${DIR} && \
+apk del build-base curl tar bzip2 x264 openssl nasm && rm -rf /var/cache/apk/*
+
+#setup superviserd
+#ENV PYTHON_VERSION=2.7.12-r0
+#ENV PY_PIP_VERSION=8.1.2-r0
+#ENV SUPERVISOR_VERSION=3.3.0
+
+RUN apk update && apk add -u python py-pip
+RUN pip install supervisor
+
+RUN mkdir /etc/supervisor
+
+COPY supervisord.conf /etc/supervisor/supervisord.conf
+
+#RUN /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+RUN echo "* * * * * /usr/local/bin/php /var/www/app/artisan schedule:run" >> /etc/crontab
+RUN echo "* * * * * /usr/sbin/ntpd -d -q -n -p pool.ntp.org" >> /etc/crontab
+
+RUN /usr/bin/crontab /etc/crontab
+
+WORKDIR /var/www/app
+
+#fucking dumb
+RUN mkdir -p /var/run/php
+RUN chown www-data:www-data /var/run/php
+
+ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

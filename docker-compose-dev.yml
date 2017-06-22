@@ -1,0 +1,16 @@
+# this is our development docker-compose building on top of the prodicker docker-compose, just mounting
+# the sync image - not redefining anything else
+
+version: "2"
+services:
+  openresty:
+    volumes:
+      - appcode-ganker-sync:/var/www/app:rw
+  php:
+    volumes:
+      - appcode-ganker-sync:/var/www/app:rw
+
+# that the important thing
+volumes:
+  appcode-ganker-sync:
+    external: true

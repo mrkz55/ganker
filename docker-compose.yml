@@ -1,0 +1,119 @@
+version: '2'
+networks:
+  ganker:
+    driver: bridge
+    ipam:
+      config:
+      - subnet: 172.18.0.0/16
+services:
+    mysql:
+        build: ./docker/mysql
+        restart: always
+        environment:
+            MYSQL_ROOT_PASSWORD: app
+            MYSQL_DATABASE: app
+            MYSQL_USER: app
+            MYSQL_PASSWORD: app
+        env_file: ./.env
+        volumes:
+            - ./docker/.data/db:/var/lib/mysql
+            - ./docker/logs/mysql:/var/log/mysql
+        networks:
+            ganker:
+                ipv4_address: 172.18.0.3
+    php:
+        build: ./docker/php-fpm
+        env_file: ./.env
+        volumes:
+            - ./:/var/www/app
+            - ./docker/logs/app:/var/www/app/var/logs
+            - ./docker/logs/xdebug:/var/log/xdebug
+            - ./docker/logs/laravel:/var/www/app/storage/logs
+        links:
+            - mysql
+            - redis
+    #        - beanstalk
+        tmpfs:
+            - /var/run
+        networks:
+            ganker:
+                ipv4_address: 172.18.0.2
+    openresty:
+        build: ./docker/openresty
+        ports:
+            - "${APP_INTERFACE}:80:80"
+        links:
+            - php
+            - redis
+        env_file: ./.env
+        volumes:
+            - ./:/var/www/app
+            - ./docker/logs/openresty/:/var/log/openresty
+        networks:
+            ganker:
+                ipv4_address: 172.18.0.100
+                aliases: 
+                    - ganker.dev
+                    - ganker.io
+
+    grafana:
+        build: ./docker/grafana
+        #image: grafana/grafana
+        env_file: ./.env
+        networks:
+            ganker:
+                ipv4_address: 172.18.0.6
+        volumes:
+            - ./docker/.data/grafana:/var/lib/grafana
+    kibana:
+        image: docker.elastic.co/kibana/kibana:5.3.1
+        env_file: ./.env
+        networks:
+            ganker:
+                ipv4_address: 172.18.0.10
+            #volumes:
+            #      - ./kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+        environment:
+            - xpack.security.enabled=false
+            - elasticsearch.url=http://elasticsearch:9200
+    elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:5.3.2
+        networks:
+            ganker:
+                ipv4_address: 172.18.0.8
+        volumes:
+            - ./docker/.data/es:/usr/share/elasticsearch/data
+        environment:
+            - cluster.name=logstash
+            - xpack.security.enabled=false
+            - http.cors.enabled=true
+            - http.cors.allow-origin="*"
+            - http.cors.allow-methods=OPTIONS,HEAD,GET,POST,PUT,DELETE
+            - http.cors.allow-headers="X-Requested-With,Content-Type,Content-Length,X-User"
+            - "ES_JAVA_OPTS=-Xms6g -Xmx6g"
+            - action.auto_create_index=.security,.monitoring*,.watches,.triggered_watches,.watcher-history*,logstash*,app*
+        #logging:
+        #    driver: "none"
+    logstash:
+        #build: ./docker/logstash
+        image: docker.elastic.co/logstash/logstash:5.3.1
+        networks:
+            ganker:
+                ipv4_address: 172.18.0.9
+        volumes:
+            - ./docker/logstash/config:/usr/share/logstash/config
+            - ./docker/logstash/pipeline:/usr/share/logstash/pipeline
+            - ./docker/logs:/var/log
+        environment:
+            - path.settings=/usr/share/logstash/config/logstash.yml
+            - path.config=/usr/share/logstash/pipeline/logstash.conf
+            - xpack.monitoring.elasticsearch.password=changeme
+            - xpack.monitoring.elasticsearch.url=http://elasticsearch:9200
+            - xpack.monitoring.elasticsearch.username=logstash_system
+        logging:
+            driver: "none"
+    redis:
+        image: redis:alpine
+        networks:
+            ganker:
+                ipv4_address: 172.18.0.5

@@ -1,0 +1,1 @@
+docker run -p '10872:873' -v appcode-g0rdv2-sync:/app_sync   -e VOLUME=/app_sync -e TZ=${TZ-`readlink /etc/localtime | sed -e 's,/usr/share/zoneinfo/,,'`} --name appcode-g0rdv2-sync -d eugenmayer/rsync
